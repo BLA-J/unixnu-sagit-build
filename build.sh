@@ -66,6 +66,9 @@ echo "== kernelcache (decompressed, pin-checked) =="
 KC="$(python3 ./unixnu ipsw fetch KernelCache -D "$ROOT/unixnu-sagit" --ipsw "$ROOT/iphone8.ipsw" | tail -1)"
 export UNIXNU_KERNELCACHE="$KC"
 echo "kernelcache: $KC"
+# The 14 GB runner disk is tight during the toolchain phase: drop the 6 GB
+# IPSW as soon as the kernelcache is extracted.
+rm -f "$ROOT/iphone8.ipsw"
 
 echo "== XNU kernel =="
 SRC="$ROOT/unixnu-src" TOOLCHAIN="$PREFIX" "$ROOT/unixnu-sagit/tools/build-xnu-sagit.sh"
@@ -75,6 +78,7 @@ cd "$ROOT/unixnu-sagit"
 mkdir -p out/adt out
 UNIXNU_SRC="$ROOT/unixnu-src" python3 tools/make-sagit-adt.py \
   --output out/adt/kernel.macho.adt \
+  --chip-id "$CHIP_ID" \
   --unique-chip-id "$UNIQUE_CHIP" --dram-size "$DRAM"
 
 echo "== payload volume =="
