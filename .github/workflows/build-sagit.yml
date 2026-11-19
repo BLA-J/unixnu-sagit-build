@@ -37,6 +37,7 @@ jobs:
           repository: edk2-porting/edk2-msm8998
           ref: new
           path: edk2-msm8998
+          submodules: recursive
 
       - name: Restore toolchain cache
         id: cache
