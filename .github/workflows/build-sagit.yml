@@ -11,14 +11,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  toolchain:
     runs-on: ubuntu-24.04
-    timeout-minutes: 350
+    timeout-minutes: 300
+    steps:
+      - name: Checkout UniXNU (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          path: unixnu-src
+          ref: 8542980d02b4d2cc5c32ee3542de1760b2562aac
+          submodules: recursive
+
+      - name: Restore toolchain cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/unixnu-linux
+          key: unixnu-toolchain-v1
+
+      - name: Install host packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            git patch flex bison bzip2 cpio rsync curl wget ca-certificates tcsh unifdef \
+            cmake clang lld mtools gettext \
+            build-essential pkg-config ninja-build python3 python3-dev xz-utils \
+            libssl-dev zlib1g-dev libbsd-dev uuid-dev llvm-dev libclang-dev device-tree-compiler
+
+      - name: Build UniXNU Linux toolchain
+        run: |
+          set -euo pipefail
+          if [ ! -x /opt/unixnu-linux/llvm/bin/clang ]; then
+            sudo env TMPDIR="${RUNNER_TEMP:-/tmp}" python3 unixnu-src/scripts/linux/setup-toolchain.py /opt/unixnu-linux -j "$(nproc)"
+          fi
+          sudo env TMPDIR="${RUNNER_TEMP:-/tmp}" python3 unixnu-src/scripts/linux/setup-toolchain.py --check
+          sudo chown -R "$(id -u):$(id -g)" /opt/unixnu-linux
+
+  build:
+    needs: toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
     steps:
       - name: Checkout build repo
         uses: actions/checkout@v4
 
-      - name: Checkout UniXNU
+      - name: Checkout UniXNU (pinned)
         uses: actions/checkout@v4
         with:
           repository: UniXNU/UniXNU
@@ -41,7 +78,6 @@ jobs:
           submodules: recursive
 
       - name: Restore toolchain cache
-        id: cache
         uses: actions/cache@v4
         with:
           path: /opt/unixnu-linux

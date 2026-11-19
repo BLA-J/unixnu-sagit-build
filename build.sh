@@ -59,6 +59,29 @@ if ! grep -q 'occupied coalesced span' "$ROOT/unixnu-src/kits/XnuPrelink/emit_pr
 else
   echo "0026 span shrink already present"
 fi
+# The device build script still carries two driver patches that upstream has
+# superseded: 0018 (the archive builders now take the deployment target from
+# kernel_target.py) and 0027 (the RamDiskDxe now expands UNXNFAT1 chunks, not
+# LZMA-alone). Its own guards cannot see that, so drop the two blocks here.
+python3 - "$ROOT/unixnu-sagit/tools/build-xnu-sagit.sh" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+for marker, replacement in (
+    ('''if ! grep -q "DEPLOYMENT_TARGET = os.environ" "$SRC/scripts/build-libpthread-kernel.py"; then
+  git -C "$SRC" apply "$PATCHES/0018-unixnu-archive-deployment.patch"
+fi''', '# 0018 superseded: upstream kernel_target.py takes the deployment target from the profile.'),
+    ('''if ! grep -q "ExpandLzmaPayload" "$SRC/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c"; then
+  git -C "$SRC" apply "$PATCHES/0027-unixnu-ramdisk-lzma.patch"
+fi''', '# 0027 superseded: the upstream RamDiskDxe expands UNXNFAT1 chunks.'),
+):
+    if marker in text:
+        text = text.replace(marker, replacement)
+    else:
+        raise SystemExit(f'block not found for: {replacement}')
+open(path, 'w').write(text)
+print('build-xnu-sagit.sh: obsolete patch blocks dropped')
+PY
 
 echo "== UniXNU Linux toolchain (cached across runs) =="
 if [ ! -x "$PREFIX/llvm/bin/clang" ]; then
