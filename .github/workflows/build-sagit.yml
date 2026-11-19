@@ -1,0 +1,61 @@
+name: build-sagit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-sagit
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - name: Checkout build repo
+        uses: actions/checkout@v4
+
+      - name: Checkout UniXNU
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          path: unixnu-src
+          submodules: recursive
+
+      - name: Checkout unixnu-sagit
+        uses: actions/checkout@v4
+        with:
+          repository: ilertnost/unixnu-sagit
+          path: unixnu-sagit
+
+      - name: Checkout edk2-msm8998
+        uses: actions/checkout@v4
+        with:
+          repository: edk2-porting/edk2-msm8998
+          ref: new
+          path: edk2-msm8998
+
+      - name: Restore toolchain cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/unixnu-linux
+          key: unixnu-toolchain-v1
+
+      - name: Build
+        run: bash build.sh
+
+      - name: Upload boot-sagit.img
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-sagit
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            edk2-msm8998/workspace/out/boot-sagit.img
+            unixnu-sagit/out/sagit-payload-volume.img.lzma
+            unixnu-sagit/out/sagit-payload-volume.img
