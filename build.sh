@@ -35,6 +35,11 @@ echo "== install OS profile into UniXNU =="
 mkdir -p "$ROOT/unixnu-src/profiles/os"
 rm -rf "$ROOT/unixnu-src/profiles/os/ios-16.7.16-20H392"
 cp -a "$ROOT/unixnu-sagit/profiles/os/ios-16.7.16-20H392" "$ROOT/unixnu-src/profiles/os/"
+# Upstream profile typo: chip_id 32785 (0x8011) is not A11. The 20H392
+# BuildManifest carries ApChipID 0x8015 = 32789; without the fix the IPSW
+# identity lookup fails with "no Erase build identity for d20ap".
+sed -i 's/"chip_id" = 32785/"chip_id" = 32789/' \
+  "$ROOT/unixnu-src/profiles/os/ios-16.7.16-20H392/profile.toml"
 
 echo "== UniXNU Linux toolchain (cached across runs) =="
 if [ ! -x "$PREFIX/llvm/bin/clang" ]; then
