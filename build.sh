@@ -82,9 +82,21 @@ UNIXNU_SRC="$ROOT/unixnu-src" python3 tools/make-sagit-adt.py \
   --unique-chip-id "$UNIQUE_CHIP" --dram-size "$DRAM"
 
 echo "== payload volume =="
+# The canonical payload kernel is the PRELINKED kernel (Apple kext closure from
+# the 20H392 kernelcache merged into the native build), repacked by the device's
+# stripper to fit the Mi 6 boot-image limit. Fall back to the native .noctf when
+# the board runs without prelink.
+PK="$ROOT/unixnu-src/out/sagit/ios-16.7.16-20H392/sagit/kernel/kernel.macho"
 K="$ROOT/unixnu-src/out/sagit/ios-16.7.16-20H392/sagit/tree/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf"
-[ -f "$K" ] || { echo "kernel missing: $K" >&2; exit 1; }
-cp "$K" out/kernel.macho
+if [ -f "$PK" ]; then
+  python3 tools/strip-prelinked-kernel.py "$PK" out/kernel.macho
+  echo "payload kernel: prelinked -> stripped"
+else
+  [ -f "$K" ] || { echo "kernel missing: $K" >&2; exit 1; }
+  cp "$K" out/kernel.macho
+  echo "payload kernel: native .noctf (prelink skipped)"
+fi
+ls -l out/kernel.macho
 python3 tools/mksagit-payload.py \
   --kernel out/kernel.macho --adt out/adt/kernel.macho.adt \
   --output out/sagit-payload-volume.img \
