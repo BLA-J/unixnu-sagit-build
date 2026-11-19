@@ -1,0 +1,65 @@
+diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
+index 394299b..d71dd52 100755
+--- a/scripts/build-xnu-4k-baseline.sh
++++ b/scripts/build-xnu-4k-baseline.sh
+@@ -842,6 +842,14 @@ make -C .cache/xnu-work "${XNU_BUILD_TARGET:-build}" SDKROOT="${XNU_SDKROOT:-iph
+   BUILD_LTO=0 BOUND_CHECKS=0 BUILD_WERROR="${XNU_BUILD_WERROR:-0}" MAKEJOBS=-j"${JOBS:-4}" \
+   CFLAGS_EXTRA="$EXTRA_CFLAGS" "${EXTRA_MAKE_ARGS[@]}" ${XNU_HOST_MAKE_ARGS[@]+"${XNU_HOST_MAKE_ARGS[@]}"} \
+   OBJROOT="$ROOT/build/xnu/ios-obj" SYMROOT="$ROOT/build/xnu/ios-sym" DSTROOT="$ROOT/build/xnu/ios-dst"
++# 8796's MakeInc.kernel predates the .noctf naming (10063 introduced it) and
++# this build runs no CTF merge, so the linked .unstripped already is the CTF-free
++# artifact the seal step and the prelink read. Alias it after every relink.
++NOCTF_KERNEL=build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf
++RAW_KERNEL=build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped
++if [ ! -f "$NOCTF_KERNEL" ] || [ "$RAW_KERNEL" -nt "$NOCTF_KERNEL" ]; then
++  cp "$RAW_KERNEL" "$NOCTF_KERNEL"
++fi
+ if [ "${XNU_SOURCE_CORECRYPTO14:-0}" = 1 ] && [ "$CRYPTO_BOOTSTRAP_MODE" = source ]; then
+   python3 scripts/seal-source-crypto-kernel.py \
+     build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped
+diff --git a/scripts/unixnu/cli.py b/scripts/unixnu/cli.py
+index 2dec299..9f9c100 100644
+--- a/scripts/unixnu/cli.py
++++ b/scripts/unixnu/cli.py
+@@ -183,7 +183,11 @@ def cmd_build(ctx):
+         with toolchain.environment(ctx):
+             if 'kernel' in steps:
+                 kernel.build(ctx, modules)
+-            kernel.prelink(ctx)
++            # A source-only board has no [kernel.prelink] and no Apple kexts to merge;
++            # the linked kernel is the deliverable. Prelinking without a spec used to
++            # fail the whole build after a successful link.
++            if ctx.board.get('kernel', {}).get('prelink'):
++                kernel.prelink(ctx)
+     if 'package' in steps:
+         package.build(ctx, modules, ctx.args.target)
+     if 'payload' in steps:
+diff --git a/scripts/unixnu/kernel.py b/scripts/unixnu/kernel.py
+index 7858f42..ffc513e 100644
+--- a/scripts/unixnu/kernel.py
++++ b/scripts/unixnu/kernel.py
+@@ -93,6 +93,10 @@ def linux_env(ctx):
+     with -Werror.
+     """
+     toolchain = Path(os.environ.get('UNIXNU_TOOLCHAIN', '/opt/unixnu-linux'))
++    # The target comes from the profile's iOS version (os.target/os.sdk) so the
++    # 8796 build stays on 16.0; the 17.0 fallbacks keep older profiles working.
++    os_profile = ctx.board.get('os', {})
++    sdk_version = os_profile.get('sdk', '17.0')
+     clt, xctoolchain = toolchain / 'CommandLineTools/usr', toolchain / 'XcodeDefault.xctoolchain/usr'
+     for path in (toolchain / 'llvm/bin/clang', clt / 'bin/ld', clt / 'bin/xnu-host-cc', clt / 'libexec/migcom',
+                  xctoolchain / 'bin/iig', Path('/usr/bin/xcrun'), toolchain / 'bin/lzfse'):
+@@ -102,9 +106,11 @@ def linux_env(ctx):
+     return {'PATH': os.pathsep.join([str(clt / 'bin'), str(toolchain / 'bin'), os.environ.get('PATH', '')]),
+             'LC_ALL': 'C', 'CLT_PREFIX': str(clt), 'XCTOOLCHAIN_PREFIX': str(xctoolchain),
+             'XNU_TOOLCHAIN_BIN': f'{clt / "bin"} {xctoolchain / "bin"}',
+-            'UNIXNU_SDKROOT': str(fakeroot), 'UNIXNU_SDK_VERSION': '17.0',
++            'UNIXNU_SDKROOT': str(fakeroot), 'UNIXNU_SDK_VERSION': sdk_version,
++            'UNIXNU_DEPLOYMENT_TARGET': sdk_version,
+             'UNIXNU_PLATFORM_PATH': str(fakeroot / 'Platforms/iPhoneOS.platform'),
+-            'CROSS_CLANG': str(toolchain / 'llvm/bin/clang'), 'DARWIN_TRIPLE': 'arm64-apple-ios17.0',
++            'CROSS_CLANG': str(toolchain / 'llvm/bin/clang'),
++            'DARWIN_TRIPLE': os_profile.get('target', 'arm64-apple-ios17.0'),
+             'CROSS_EXTRA_FLAGS': '-mllvm -disable-atexit-based-global-dtor-lowering',
+             'CCC_OVERRIDE_OPTIONS': '# +-Wno-missing-designated-field-initializers +-Wno-unused-but-set-global'}
+ 

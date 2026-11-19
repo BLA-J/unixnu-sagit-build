@@ -40,6 +40,25 @@ cp -a "$ROOT/unixnu-sagit/profiles/os/ios-16.7.16-20H392" "$ROOT/unixnu-src/prof
 # identity lookup fails with "no Erase build identity for d20ap".
 sed -i 's/"chip_id" = 32785/"chip_id" = 32789/' \
   "$ROOT/unixnu-src/profiles/os/ios-16.7.16-20H392/profile.toml"
+# The upstream kernel build takes the deployment target from the profile's
+# ios_version; the device profile predates that key (it carries sdk/target).
+sed -i 's/^"sdk" = "16.0"$/"sdk" = "16.0"\n"ios_version" = "16.0"/' \
+  "$ROOT/unixnu-src/profiles/os/ios-16.7.16-20H392/profile.toml"
+
+echo "== rebased driver patches for pinned UniXNU =="
+if ! grep -q 'A source-only board has no \[kernel.prelink\]' "$ROOT/unixnu-src/scripts/unixnu/cli.py"; then
+  git -C "$ROOT/unixnu-src" apply "$ROOT/rebased/01-driver-edits.patch"
+  echo "applied 01-driver-edits.patch"
+else
+  echo "01-driver-edits.patch already present"
+fi
+if ! grep -q 'occupied coalesced span' "$ROOT/unixnu-src/kits/XnuPrelink/emit_prelink.py"; then
+  git -C "$ROOT/unixnu-src/kits/XnuPrelink" apply \
+    "$ROOT/unixnu-sagit/patches/0026-unixnu-prelink-span-shrink.patch"
+  echo "applied 0026 span shrink"
+else
+  echo "0026 span shrink already present"
+fi
 
 echo "== UniXNU Linux toolchain (cached across runs) =="
 if [ ! -x "$PREFIX/llvm/bin/clang" ]; then
@@ -106,11 +125,26 @@ python3 tools/mksagit-payload.py \
   --kernel out/kernel.macho --adt out/adt/kernel.macho.adt \
   --output out/sagit-payload-volume.img \
   --size-mib 44 --timeout 3 \
-  --args="-v -enable_kprintf_spam debug=0x14e" --lzma
-ls -l out/sagit-payload-volume.img*
+  --args="-v -enable_kprintf_spam debug=0x14e"
+# The current UniXNURamDiskDxe expands the upstream UNXNFAT1 chunk format
+# (1 MiB Tiano-compressed UEFI chunks) instead of the old LZMA-alone wrap.
+echo "== UNXNFAT1 ramdisk =="
+make -C "$ROOT/edk2-msm8998/Common/edk2/BaseTools" -j"$JOBS" >/dev/null
+python3 - "$ROOT" <<'PY'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / 'unixnu-src' / 'scripts'))
+from unixnu import ramdisk
+ramdisk.encode(root / 'unixnu-sagit' / 'out' / 'sagit-payload-volume.img',
+               root / 'unixnu-sagit' / 'out' / 'sagit-payload-volume.ramdisk',
+               root / 'edk2-msm8998' / 'Common' / 'edk2')
+print('ramdisk: packed UNXNFAT1')
+PY
+ls -l out/sagit-payload-volume.img out/sagit-payload-volume.ramdisk
 
 echo "== EDK2 firmware + boot-sagit.img =="
-PAYLOAD="$ROOT/unixnu-sagit/out/sagit-payload-volume.img.lzma" \
+PAYLOAD="$ROOT/unixnu-sagit/out/sagit-payload-volume.ramdisk" \
 ROOT="$ROOT/edk2-msm8998" \
 TOOLCHAIN="$ROOT/$GCC_TAR" \
 UNIXNU_SRC="$ROOT/unixnu-src" \
