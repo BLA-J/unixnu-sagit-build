@@ -38,6 +38,13 @@ for attempt in 1 2 3 4 5; do
 done
 [ "$APT_OK" = 1 ] || { echo "apt install failed after 5 attempts" >&2; exit 1; }
 
+echo "== install toolchain shims into /usr/bin =="
+# setup-toolchain.py runs in the separate toolchain job on another runner; its
+# /usr/bin shims are outside the cached prefix, so install them here again.
+for shim in xcrun plutil codesign; do
+  sudo install -m 0755 "$ROOT/unixnu-src/scripts/linux/$shim" "/usr/bin/$shim"
+done
+
 echo "== install OS profile into UniXNU =="
 mkdir -p "$ROOT/unixnu-src/profiles/os"
 rm -rf "$ROOT/unixnu-src/profiles/os/ios-16.7.16-20H392"
