@@ -82,6 +82,9 @@ fi
 # superseded: 0018 (the archive builders now take the deployment target from
 # kernel_target.py) and 0027 (the RamDiskDxe now expands UNXNFAT1 chunks, not
 # LZMA-alone). Its own guards cannot see that, so drop the two blocks here.
+# It also re-copies the stock OS profile over the corrected one just before the
+# kernel step, which would undo the chip_id/ios_version/target fixes above; the
+# profile is already installed, so its copy block goes away too.
 python3 - "$ROOT/unixnu-sagit/tools/build-xnu-sagit.sh" <<'PY'
 import sys
 path = sys.argv[1]
@@ -93,13 +96,17 @@ fi''', '# 0018 superseded: upstream kernel_target.py takes the deployment target
     ('''if ! grep -q "ExpandLzmaPayload" "$SRC/package/UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.c"; then
   git -C "$SRC" apply "$PATCHES/0027-unixnu-ramdisk-lzma.patch"
 fi''', '# 0027 superseded: the upstream RamDiskDxe expands UNXNFAT1 chunks.'),
+    ('''mkdir -p "$SRC/profiles/os"
+rm -rf "$SRC/profiles/os/ios-16.7.16-20H392"
+cp -a "$DEVICE_DIR/profiles/os/ios-16.7.16-20H392" "$SRC/profiles/os/"''',
+     '# The corrected OS profile is installed by the driver script; not re-copied here.'),
 ):
     if marker in text:
         text = text.replace(marker, replacement)
     else:
         raise SystemExit(f'block not found for: {replacement}')
 open(path, 'w').write(text)
-print('build-xnu-sagit.sh: obsolete patch blocks dropped')
+print('build-xnu-sagit.sh: obsolete patches and profile overwrite dropped')
 PY
 
 echo "== UniXNU Linux toolchain (cached across runs) =="
