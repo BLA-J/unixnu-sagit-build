@@ -58,6 +58,11 @@ sed -i 's/"chip_id" = 32785/"chip_id" = 32789/' \
 # ios_version; the device profile predates that key (it carries sdk/target).
 sed -i 's/^"sdk" = "16.0"$/"sdk" = "16.0"\n"ios_version" = "16.0"/' \
   "$ROOT/unixnu-src/profiles/os/ios-16.7.16-20H392/profile.toml"
+# [os] target now names the OS family (ios/macosx) for UNIXNU_XNU_TARGET; the
+# device profile still carries the old triple value there, which the baseline
+# script rejects.
+sed -i 's/^"target" = "arm64-apple-ios16.0"$/"target" = "ios"/' \
+  "$ROOT/unixnu-src/profiles/os/ios-16.7.16-20H392/profile.toml"
 
 echo "== rebased driver patches for pinned UniXNU =="
 if ! grep -q 'A source-only board has no \[kernel.prelink\]' "$ROOT/unixnu-src/scripts/unixnu/cli.py"; then
