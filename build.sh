@@ -24,12 +24,19 @@ UNIQUE_CHIP="0x80150001A7FEC139"  # stable per-device platform seed (serial a7fe
 DRAM="0xf0000000"                 # matches dts/sagit.dts memory window
 
 echo "== host packages =="
-sudo apt-get update -qq
-sudo apt-get install -y --no-install-recommends \
-  git patch flex bison bzip2 cpio rsync curl wget ca-certificates tcsh unifdef \
-  cmake clang lld mtools gettext \
-  build-essential pkg-config ninja-build python3 python3-dev xz-utils \
-  libssl-dev zlib1g-dev libbsd-dev uuid-dev llvm-dev libclang-dev device-tree-compiler
+export DEBIAN_FRONTEND=noninteractive
+APT_OK=0
+for attempt in 1 2 3 4 5; do
+  sudo apt-get update -qq &&
+  sudo apt-get install -y --no-install-recommends \
+    git patch flex bison bzip2 cpio rsync curl wget ca-certificates tcsh unifdef \
+    cmake clang lld mtools gettext \
+    build-essential pkg-config ninja-build python3 python3-dev xz-utils \
+    libssl-dev zlib1g-dev libbsd-dev uuid-dev llvm-dev libclang-dev device-tree-compiler && APT_OK=1 && break
+  echo "apt attempt $attempt failed (mirror error); retrying in 20s"
+  sleep 20
+done
+[ "$APT_OK" = 1 ] || { echo "apt install failed after 5 attempts" >&2; exit 1; }
 
 echo "== install OS profile into UniXNU =="
 mkdir -p "$ROOT/unixnu-src/profiles/os"
