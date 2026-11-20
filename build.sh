@@ -216,6 +216,23 @@ PY
 ls -l out/sagit-payload-volume.img out/sagit-payload-volume.ramdisk
 
 echo "== EDK2 firmware + boot-sagit.img =="
+# GCC 13 enables -Wdangling-pointer by default; the platform deliberately stores
+# the address of a local memory-map array in a static (ArmPlatformLibMem.c), and
+# RELEASE builds treat warnings as errors. This is the maintainer's 0001 fix.
+python3 - "$ROOT/edk2-msm8998/Platforms/Msm8998Pkg/Msm8998.dsc" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if '-Wno-dangling-pointer' in text:
+    print('Msm8998.dsc: dangling-pointer already suppressed')
+else:
+    anchor = '  GCC:RELEASE_*_*_CC_FLAGS  = -DMDEPKG_NDEBUG\n'
+    if anchor not in text:
+        raise SystemExit('Msm8998.dsc: GCC build-options anchor not found')
+    text = text.replace(anchor, anchor + '  GCC:*_*_*_CC_FLAGS = -Wno-dangling-pointer\n', 1)
+    open(path, 'w').write(text)
+    print('Msm8998.dsc: added -Wno-dangling-pointer for GCC 13')
+PY
 # The device overlay patches the DSC expecting SagitPkg/Drivers/RamDiskDxe and
 # the UniXNU module block to be there already (its own anchor check runs before
 # it appends them). Wire the platform DSC here first; the overlay then only adds
