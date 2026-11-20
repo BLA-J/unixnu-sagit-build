@@ -255,7 +255,10 @@ else:
 [LibraryClasses.common]
   UniXNULib|UniXNUPkg/Library/UniXNULib/UniXNULib.inf
 
-[Components.common]
+# "common" is a valid tag for LibraryClasses but not for Components: a
+# [Components.common] heading is silently skipped, so these modules would never
+# be compiled and the firmware would fall through to the shell.
+[Components]
   UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
   # UniXNURamDiskDxe reads a Mu-Silicium SEC HOB this EDK2 port does not
   # create; SagitRamDiskDxe publishes the ramdisk from the device tree instead.
