@@ -216,6 +216,43 @@ PY
 ls -l out/sagit-payload-volume.img out/sagit-payload-volume.ramdisk
 
 echo "== EDK2 firmware + boot-sagit.img =="
+# The device overlay patches the DSC expecting SagitPkg/Drivers/RamDiskDxe and
+# the UniXNU module block to be there already (its own anchor check runs before
+# it appends them). Wire the platform DSC here first; the overlay then only adds
+# ArmPkg.dec visibility and stays idempotent.
+DSC="$ROOT/edk2-msm8998/Platforms/Msm8998Pkg/Device/xiaomi/sagit/sagit.dsc"
+python3 - "$DSC" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if 'UniXNUPkg/Driver/UniXNUDxe' in text:
+    print('DSC: UniXNU modules already wired')
+else:
+    if not text.endswith('\n'):
+        text += '\n'
+    text += '''
+#
+# UniXNU boot manager + DarwinBoot XNU loader. Both packages live outside this
+# tree and are resolved through PACKAGES_PATH (see build-sagit-edk2.sh).
+#
+[LibraryClasses.common]
+  UniXNULib|UniXNUPkg/Library/UniXNULib/UniXNULib.inf
+
+[Components.common]
+  UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
+  # UniXNURamDiskDxe reads a Mu-Silicium SEC HOB this EDK2 port does not
+  # create; SagitRamDiskDxe publishes the ramdisk from the device tree instead.
+  SagitPkg/Drivers/RamDiskDxe/RamDiskDxe.inf
+  SagitPkg/Drivers/ReportDxe/ReportDxe.inf
+  UniXNUPkg/Application/UniXNU/UniXNU.inf {
+    <LibraryClasses>
+      FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf
+  }
+  DarwinBootPkg/Driver/DarwinBoot.inf
+'''
+    open(path, 'w').write(text)
+    print('DSC: UniXNU/DarwinBoot/Sagit modules appended')
+PY
 # bash expands assignments in order, so capture the paths first: assigning ROOT
 # inside the call would make the following "$ROOT/..." expansions point into
 # edk2-msm8998 (which is how MU_BASECORE ended up under the EDK2 tree).
