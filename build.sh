@@ -78,6 +78,26 @@ if ! grep -q 'occupied coalesced span' "$ROOT/unixnu-src/kits/XnuPrelink/emit_pr
 else
   echo "0026 span shrink already present"
 fi
+# ArmCpu.cpp references arm64_platform_sleep_hook as a weak import: the board
+# kernel patch is expected to define the variable in ml_arm_sleep. XNU 8796 has
+# no such definition and the kernel link rejects the unresolved weak data
+# reference. Platform sleep is not needed for bring-up, so the driver defines
+# the hook itself (null unless platform-sleep=1, which we never pass).
+python3 - "$ROOT/unixnu-src/drivers/ArmCpu/ArmCpu.cpp" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+old = 'extern "C" void (*arm64_platform_sleep_hook) (boolean_t boot_cpu) __attribute__((weak_import));'
+new = 'extern "C" void (*arm64_platform_sleep_hook) (boolean_t boot_cpu) = nullptr;'
+if new in text:
+    print('ArmCpu.cpp: sleep hook already defined locally')
+elif old in text:
+    text = text.replace(old, new)
+    open(path, 'w').write(text)
+    print('ArmCpu.cpp: arm64_platform_sleep_hook defined locally')
+else:
+    raise SystemExit('ArmCpu.cpp: sleep hook declaration not found')
+PY
 # The device build script still carries two driver patches that upstream has
 # superseded: 0018 (the archive builders now take the deployment target from
 # kernel_target.py) and 0027 (the RamDiskDxe now expands UNXNFAT1 chunks, not
