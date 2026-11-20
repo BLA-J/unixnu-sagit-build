@@ -82,21 +82,24 @@ fi
 # kernel patch is expected to define the variable in ml_arm_sleep. XNU 8796 has
 # no such definition and the kernel link rejects the unresolved weak data
 # reference. Platform sleep is not needed for bring-up, so the driver defines
-# the hook itself (null unless platform-sleep=1, which we never pass).
+# the hook itself (null unless platform-sleep=1, which we never pass) and the
+# now-always-true "&hook" guard goes away (it trips -Werror).
 python3 - "$ROOT/unixnu-src/drivers/ArmCpu/ArmCpu.cpp" <<'PY'
 import sys
 path = sys.argv[1]
 text = open(path).read()
 old = 'extern "C" void (*arm64_platform_sleep_hook) (boolean_t boot_cpu) __attribute__((weak_import));'
 new = 'extern "C" void (*arm64_platform_sleep_hook) (boolean_t boot_cpu) = nullptr;'
-if new in text:
-    print('ArmCpu.cpp: sleep hook already defined locally')
-elif old in text:
+if old in text:
     text = text.replace(old, new)
-    open(path, 'w').write(text)
-    print('ArmCpu.cpp: arm64_platform_sleep_hook defined locally')
-else:
+if '&arm64_platform_sleep_hook && ' in text:
+    text = text.replace('&arm64_platform_sleep_hook && ', '')
+if '&arm64_platform_sleep_hook' in text:
+    raise SystemExit('ArmCpu.cpp: remaining &arm64_platform_sleep_hook reference')
+if new not in text:
     raise SystemExit('ArmCpu.cpp: sleep hook declaration not found')
+open(path, 'w').write(text)
+print('ArmCpu.cpp: arm64_platform_sleep_hook defined locally, guard dropped')
 PY
 # The device build script still carries two driver patches that upstream has
 # superseded: 0018 (the archive builders now take the deployment target from
