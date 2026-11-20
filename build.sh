@@ -292,9 +292,36 @@ else:
       FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf
   }
   DarwinBootPkg/Driver/DarwinBoot.inf
+  # Debug aids for bring-up: a USB keyboard (OTG) gives the UEFI shell real
+  # input, and FvSimpleFileSystem exposes firmware-volume files as fsN: so the
+  # UniXNU application can be started by hand when BDS does not pick it up.
+  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
+  MdeModulePkg/Universal/FvSimpleFileSystemDxe/FvSimpleFileSystemDxe.inf
 '''
     open(path, 'w').write(text)
     print('DSC: UniXNU/DarwinBoot/Sagit modules appended')
+PY
+# Same two debug modules have to be packed into the main firmware volume; the
+# FDF anchor is the commented-out KernelFdtDxe line the device overlay uses.
+python3 - "$ROOT/edk2-msm8998/Platforms/Msm8998Pkg/Device/xiaomi/sagit/sagit.fdf" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if 'FvSimpleFileSystemDxe' in text:
+    print('FDF: keyboard/file-system modules already present')
+else:
+    anchor = '  # INF src/kernelfdt/KernelFdtDxe.inf\n'
+    if anchor not in text:
+        raise SystemExit('FDF: anchor not found')
+    text = text.replace(
+        anchor,
+        anchor
+        + '  INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf\n'
+        + '  INF MdeModulePkg/Universal/FvSimpleFileSystemDxe/FvSimpleFileSystemDxe.inf\n',
+        1,
+    )
+    open(path, 'w').write(text)
+    print('FDF: added UsbKbDxe and FvSimpleFileSystemDxe')
 PY
 # bash expands assignments in order, so capture the paths first: assigning ROOT
 # inside the call would make the following "$ROOT/..." expansions point into
