@@ -222,10 +222,16 @@ echo "== EDK2 firmware + boot-sagit.img =="
 EDK2_ROOT="$ROOT/edk2-msm8998"
 GCC_DIR="$ROOT/$GCC_TAR"
 UNIXNU_DIR="$ROOT/unixnu-src"
+# The fetch feed directory carries the source hash of this checkout, not the
+# revision the device script was written against (mu_basecore-8f10084c here).
+MU_BASECORE_DIR="$(ls -d "$UNIXNU_DIR"/out/feeds/mu_basecore-* 2>/dev/null | head -1)"
+[ -d "$MU_BASECORE_DIR/MdePkg" ] || { echo "Mu basecore feed missing under $UNIXNU_DIR/out/feeds" >&2; exit 1; }
+echo "Mu basecore: $MU_BASECORE_DIR"
 PAYLOAD="$ROOT/unixnu-sagit/out/sagit-payload-volume.ramdisk" \
 ROOT="$EDK2_ROOT" \
 TOOLCHAIN="$GCC_DIR" \
 UNIXNU_SRC="$UNIXNU_DIR" \
+MU_BASECORE="$MU_BASECORE_DIR" \
   "$ROOT/unixnu-sagit/tools/build-sagit-edk2.sh"
 
 echo "== artifact =="
