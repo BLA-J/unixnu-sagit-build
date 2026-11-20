@@ -233,6 +233,29 @@ else:
     open(path, 'w').write(text)
     print('Msm8998.dsc: added -Wno-dangling-pointer for GCC 13')
 PY
+# The platform has no flash NVRAM region, so VariableRuntimeDxe cannot persist
+# Boot####/BootOrder; without them BDS has no UniXNU option and starts the shell.
+# RAM-emulated variables are enough: UniXNUDxe re-registers its option on every
+# boot (the driver says so explicitly), and the shell is not needed at all.
+python3 - "$ROOT/edk2-msm8998/Platforms/Msm8998Pkg/Msm8998.dsc" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if 'PcdEmuVariableNvModeEnable' in text:
+    print('Msm8998.dsc: emulated variables already enabled')
+else:
+    anchor = '  gArmTokenSpaceGuid.PcdSystemMemorySize|0xF0000000        # System Memory (4GB)\n'
+    if anchor not in text:
+        raise SystemExit('Msm8998.dsc: system-memory PCD anchor not found')
+    text = text.replace(
+        anchor,
+        anchor + '  gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvModeEnable|TRUE\n'
+                 '  gEfiMdeModulePkgTokenSpaceGuid.PcdVariableStoreSize|0x00010000\n',
+        1,
+    )
+    open(path, 'w').write(text)
+    print('Msm8998.dsc: RAM-emulated variable store enabled for BDS boot options')
+PY
 # The device overlay patches the DSC expecting SagitPkg/Drivers/RamDiskDxe and
 # the UniXNU module block to be there already (its own anchor check runs before
 # it appends them). Wire the platform DSC here first; the overlay then only adds
