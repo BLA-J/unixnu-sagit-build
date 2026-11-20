@@ -216,10 +216,16 @@ PY
 ls -l out/sagit-payload-volume.img out/sagit-payload-volume.ramdisk
 
 echo "== EDK2 firmware + boot-sagit.img =="
+# bash expands assignments in order, so capture the paths first: assigning ROOT
+# inside the call would make the following "$ROOT/..." expansions point into
+# edk2-msm8998 (which is how MU_BASECORE ended up under the EDK2 tree).
+EDK2_ROOT="$ROOT/edk2-msm8998"
+GCC_DIR="$ROOT/$GCC_TAR"
+UNIXNU_DIR="$ROOT/unixnu-src"
 PAYLOAD="$ROOT/unixnu-sagit/out/sagit-payload-volume.ramdisk" \
-ROOT="$ROOT/edk2-msm8998" \
-TOOLCHAIN="$ROOT/$GCC_TAR" \
-UNIXNU_SRC="$ROOT/unixnu-src" \
+ROOT="$EDK2_ROOT" \
+TOOLCHAIN="$GCC_DIR" \
+UNIXNU_SRC="$UNIXNU_DIR" \
   "$ROOT/unixnu-sagit/tools/build-sagit-edk2.sh"
 
 echo "== artifact =="
