@@ -321,6 +321,60 @@ cat > "$HELLO_DIR/HelloDxe.inf" <<'INF'
 [Depex]
   TRUE
 INF
+# Stage diagnostics for the UniXNU registrar. RELEASE drops DEBUG output and DXE
+# drivers run before BDS connects ConOut, so record the stage in a variable:
+# 10/20 app lookup, 11 not found, 12 option build failed, 30 option built,
+# 40|status Boot#### write failed, 50 written, 60|status BootOrder failed, 70 done.
+python3 - "$ROOT/unixnu-src/package/UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.c" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if 'UniXNUDiag' in text:
+    print('UniXNUDxe: diagnostics already instrumented')
+    sys.exit(0)
+
+helper = '''
+STATIC
+VOID
+DiagStage (
+  IN UINT32  Stage
+  )
+{
+  gRT->SetVariable (
+         L"UniXNUDiag",
+         &gEfiGlobalVariableGuid,
+         EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
+         sizeof (Stage),
+         &Stage
+         );
+}
+'''
+anchor = 'STATIC CONST CHAR16  mDescription[]    = L"UniXNU";\n'
+if anchor not in text:
+    sys.exit('UniXNUDxe.c: description anchor not found')
+text = text.replace(anchor, anchor + helper, 1)
+
+pairs = [
+    ('  Path = FindApplication (ImageHandle);\n',
+     '  Path = FindApplication (ImageHandle);\n  DiagStage (Path == NULL ? 10 : 20);\n'),
+    ('    return EFI_NOT_FOUND;\n',
+     '    DiagStage (11);\n    return EFI_NOT_FOUND;\n'),
+    ('  Option = BuildLoadOption (Path, &OptionSize);\n',
+     '  Option = BuildLoadOption (Path, &OptionSize);\n  DiagStage (Option == NULL ? 12 : 30);\n'),
+    ('    Status = gRT->SetVariable (Name, &gEfiGlobalVariableGuid, OPTION_ATTRIBUTES, OptionSize, Option);\n',
+     '    Status = gRT->SetVariable (Name, &gEfiGlobalVariableGuid, OPTION_ATTRIBUTES, OptionSize, Option);\n'
+     '    DiagStage (EFI_ERROR (Status) ? (40 | ((UINT32)Status & 0x3F)) : 50);\n'),
+    ('  Status = gRT->SetVariable (EFI_BOOT_ORDER_VARIABLE_NAME, &gEfiGlobalVariableGuid, OPTION_ATTRIBUTES, Out * sizeof (UINT16), NewOrder);\n',
+     '  Status = gRT->SetVariable (EFI_BOOT_ORDER_VARIABLE_NAME, &gEfiGlobalVariableGuid, OPTION_ATTRIBUTES, Out * sizeof (UINT16), NewOrder);\n'
+     '  DiagStage (EFI_ERROR (Status) ? (60 | ((UINT32)Status & 0x3F)) : 70);\n'),
+]
+for old, new in pairs:
+    if old not in text:
+        sys.exit('UniXNUDxe.c: anchor missing: ' + old.strip())
+    text = text.replace(old, new, 1)
+open(path, 'w').write(text)
+print('UniXNUDxe: stage diagnostics instrumented')
+PY
 python3 - "$DSC" <<'PY'
 import sys
 path = sys.argv[1]
