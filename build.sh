@@ -261,16 +261,17 @@ PY
 # it appends them). Wire the platform DSC here first; the overlay then only adds
 # ArmPkg.dec visibility and stays idempotent.
 DSC="$ROOT/edk2-msm8998/Platforms/Msm8998Pkg/Device/xiaomi/sagit/sagit.dsc"
-# Minimal dispatch probe: a DXE driver whose entry prints straight to ConOut
-# (RELEASE builds compile DEBUG() out, so the other modules stay silent even if
-# they do run). If this banner never appears, the dispatcher is not reaching the
-# modules we add to this FV at all.
+# Minimal dispatch probe. Console output alone is not conclusive: DXE drivers run
+# before BDS connects ConOut, so a banner can vanish into a null console. Writing
+# a variable is a hard marker the UEFI shell can read back with dmpstore.
 HELLO_DIR="$ROOT/unixnu-src/package/UniXNUPkg/Driver/HelloDxe"
 mkdir -p "$HELLO_DIR"
 cat > "$HELLO_DIR/HelloDxe.c" <<'C'
 #include <Uefi.h>
+#include <Guid/GlobalVariable.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiDriverEntryPoint.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
 
 EFI_STATUS
 EFIAPI
@@ -279,8 +280,18 @@ HelloDxeEntry (
   IN EFI_SYSTEM_TABLE  *SystemTable
   )
 {
+  UINT8  Marker;
+
   SystemTable->ConOut->OutputString (SystemTable->ConOut,
                                      L"\r\nHELLO-DXE: dispatcher reached our module\r\n");
+  Marker = 1;
+  gRT->SetVariable (
+         L"HelloProbe",
+         &gEfiGlobalVariableGuid,
+         EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
+         sizeof (Marker),
+         &Marker
+         );
   return EFI_SUCCESS;
 }
 C
@@ -302,6 +313,10 @@ cat > "$HELLO_DIR/HelloDxe.inf" <<'INF'
 [LibraryClasses]
   UefiBootServicesTableLib
   UefiDriverEntryPoint
+  UefiRuntimeServicesTableLib
+
+[Guids]
+  gEfiGlobalVariableGuid
 
 [Depex]
   TRUE
