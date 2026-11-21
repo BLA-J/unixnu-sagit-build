@@ -390,7 +390,7 @@ DiagStage (
 {
   gST->RuntimeServices->SetVariable (
                               L"UniXNUAppDiag",
-                              &mDiagGuid,
+                              (EFI_GUID *)&mDiagGuid,
                               0x07,
                               sizeof (Stage),
                               &Stage
