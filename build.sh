@@ -198,22 +198,12 @@ python3 tools/mksagit-payload.py \
   --output out/sagit-payload-volume.img \
   --size-mib 44 --timeout 3 \
   --args="-v -enable_kprintf_spam debug=0x14e"
-# The current UniXNURamDiskDxe expands the upstream UNXNFAT1 chunk format
-# (1 MiB Tiano-compressed UEFI chunks) instead of the old LZMA-alone wrap.
-echo "== UNXNFAT1 ramdisk =="
-make -C "$ROOT/edk2-msm8998/Common/edk2/BaseTools" -j"$JOBS" >/dev/null
-python3 - "$ROOT" <<'PY'
-import sys
-from pathlib import Path
-root = Path(sys.argv[1])
-sys.path.insert(0, str(root / 'unixnu-src' / 'scripts'))
-from unixnu import ramdisk
-ramdisk.encode(root / 'unixnu-sagit' / 'out' / 'sagit-payload-volume.img',
-               root / 'unixnu-sagit' / 'out' / 'sagit-payload-volume.ramdisk',
-               root / 'edk2-msm8998' / 'Common' / 'edk2')
-print('ramdisk: packed UNXNFAT1')
-PY
-ls -l out/sagit-payload-volume.img out/sagit-payload-volume.ramdisk
+# The payload goes into the boot image as a PLAIN FAT volume. This port uses
+# SagitPkg/Drivers/RamDiskDxe, which finds the volume in memory by its FAT boot
+# sector and the ADRENOLINE label; the upstream UNXNFAT1 chunk format
+# (scripts/unixnu/ramdisk.py encode) is only understood by UniXNURamDiskDxe,
+# which this EDK2 port does not run.
+ls -l out/sagit-payload-volume.img
 
 echo "== EDK2 firmware + boot-sagit.img =="
 # GCC 13 enables -Wdangling-pointer by default; the platform deliberately stores
@@ -500,7 +490,7 @@ UNIXNU_DIR="$ROOT/unixnu-src"
 MU_BASECORE_DIR="$(ls -d "$UNIXNU_DIR"/out/feeds/mu_basecore-* 2>/dev/null | head -1)"
 [ -d "$MU_BASECORE_DIR/MdePkg" ] || { echo "Mu basecore feed missing under $UNIXNU_DIR/out/feeds" >&2; exit 1; }
 echo "Mu basecore: $MU_BASECORE_DIR"
-PAYLOAD="$ROOT/unixnu-sagit/out/sagit-payload-volume.ramdisk" \
+PAYLOAD="$ROOT/unixnu-sagit/out/sagit-payload-volume.img" \
 ROOT="$EDK2_ROOT" \
 TOOLCHAIN="$GCC_DIR" \
 UNIXNU_SRC="$UNIXNU_DIR" \
