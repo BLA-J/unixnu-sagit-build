@@ -375,6 +375,58 @@ for old, new in pairs:
 open(path, 'w').write(text)
 print('UniXNUDxe: stage diagnostics instrumented')
 PY
+# Same idea for the application itself: BDS does start it (the registrar reaches
+# stage 70), yet the shell follows, so the app must be exiting early. Record how
+# far UniXNURun gets: 1 entered, 2 storage connected, 3|count<<8 config loaded,
+# 4 drivers injected, 5 UI up (menu about to run).
+python3 - "$ROOT/unixnu-src/package/UniXNUPkg/Library/UniXNULib/Main.c" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if 'UniXNUAppDiag' in text:
+    print('Main.c: diagnostics already instrumented')
+    sys.exit(0)
+
+helper = '''
+STATIC CONST EFI_GUID  mDiagGuid = {
+  0x8beadf61, 0x93ca, 0x11d2, { 0xaa, 0x0d, 0x00, 0xe0, 0x98, 0x03, 0x2b, 0x8c }
+};
+
+STATIC
+VOID
+DiagStage (
+  IN UINT32  Stage
+  )
+{
+  gST->RuntimeServices->SetVariable (
+                              L"UniXNUAppDiag",
+                              &mDiagGuid,
+                              0x07,
+                              sizeof (Stage),
+                              &Stage
+                              );
+}
+'''
+anchor = 'STATIC EFI_SERIAL_IO_PROTOCOL  *mSerial;\n'
+if anchor not in text:
+    sys.exit('Main.c: mSerial anchor not found')
+text = text.replace(anchor, anchor + helper, 1)
+
+pairs = [
+    ('  UniXNUConnectAll ();\n',
+     '  DiagStage (1);\n  UniXNUConnectAll ();\n  DiagStage (2);\n'),
+    ('  UniXNUPublishSlices (&Config);\n',
+     '  DiagStage (3 | ((UINT32)Config.EntryCount << 8));\n  UniXNUPublishSlices (&Config);\n'),
+    ('  UniXNUUiInit (&Config, &Ui);\n',
+     '  DiagStage (4);\n  UniXNUUiInit (&Config, &Ui);\n  DiagStage (5);\n'),
+]
+for old, new in pairs:
+    if old not in text:
+        sys.exit('Main.c: anchor missing: ' + old.strip())
+    text = text.replace(old, new, 1)
+open(path, 'w').write(text)
+print('Main.c: stage diagnostics instrumented')
+PY
 python3 - "$DSC" <<'PY'
 import sys
 path = sys.argv[1]
