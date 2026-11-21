@@ -261,6 +261,51 @@ PY
 # it appends them). Wire the platform DSC here first; the overlay then only adds
 # ArmPkg.dec visibility and stays idempotent.
 DSC="$ROOT/edk2-msm8998/Platforms/Msm8998Pkg/Device/xiaomi/sagit/sagit.dsc"
+# Minimal dispatch probe: a DXE driver whose entry prints straight to ConOut
+# (RELEASE builds compile DEBUG() out, so the other modules stay silent even if
+# they do run). If this banner never appears, the dispatcher is not reaching the
+# modules we add to this FV at all.
+HELLO_DIR="$ROOT/unixnu-src/package/UniXNUPkg/Driver/HelloDxe"
+mkdir -p "$HELLO_DIR"
+cat > "$HELLO_DIR/HelloDxe.c" <<'C'
+#include <Uefi.h>
+#include <Library/UefiBootServicesTableLib.h>
+#include <Library/UefiDriverEntryPoint.h>
+
+EFI_STATUS
+EFIAPI
+HelloDxeEntry (
+  IN EFI_HANDLE        ImageHandle,
+  IN EFI_SYSTEM_TABLE  *SystemTable
+  )
+{
+  SystemTable->ConOut->OutputString (SystemTable->ConOut,
+                                     L"\r\nHELLO-DXE: dispatcher reached our module\r\n");
+  return EFI_SUCCESS;
+}
+C
+cat > "$HELLO_DIR/HelloDxe.inf" <<'INF'
+[Defines]
+  INF_VERSION    = 0x00010019
+  BASE_NAME      = HelloDxe
+  FILE_GUID      = 0B1E9A31-7C2D-4F0A-9C55-6D3E2A8F1B47
+  MODULE_TYPE    = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT    = HelloDxeEntry
+
+[Sources]
+  HelloDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Depex]
+  TRUE
+INF
 python3 - "$DSC" <<'PY'
 import sys
 path = sys.argv[1]
@@ -296,11 +341,12 @@ else:
   # fsN: so the UniXNU application can be started by hand when BDS does not pick
   # it up. UsbKbDxe is already a prebuilt binary in the platform, not added here.
   MdeModulePkg/Universal/FvSimpleFileSystemDxe/FvSimpleFileSystemDxe.inf
+  UniXNUPkg/Driver/HelloDxe/HelloDxe.inf
 '''
     open(path, 'w').write(text)
     print('DSC: UniXNU/DarwinBoot/Sagit modules appended')
 PY
-# Same debug module has to be packed into the main firmware volume; the FDF
+# Same debug modules have to be packed into the main firmware volume; the FDF
 # anchor is the commented-out KernelFdtDxe line the device overlay uses.
 python3 - "$ROOT/edk2-msm8998/Platforms/Msm8998Pkg/Device/xiaomi/sagit/sagit.fdf" <<'PY'
 import sys
@@ -314,11 +360,13 @@ else:
         raise SystemExit('FDF: anchor not found')
     text = text.replace(
         anchor,
-        anchor + '  INF MdeModulePkg/Universal/FvSimpleFileSystemDxe/FvSimpleFileSystemDxe.inf\n',
+        anchor
+        + '  INF MdeModulePkg/Universal/FvSimpleFileSystemDxe/FvSimpleFileSystemDxe.inf\n'
+        + '  INF UniXNUPkg/Driver/HelloDxe/HelloDxe.inf\n',
         1,
     )
     open(path, 'w').write(text)
-    print('FDF: added FvSimpleFileSystemDxe')
+    print('FDF: added FvSimpleFileSystemDxe and HelloDxe')
 PY
 # bash expands assignments in order, so capture the paths first: assigning ROOT
 # inside the call would make the following "$ROOT/..." expansions point into
